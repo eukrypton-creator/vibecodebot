@@ -94,11 +94,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         result = await callBackend('/api/admin/generate', { adminKey: ADMIN_KEY, type, owner: target.id });
       } catch (error) {
+        console.error('Backend call failed:', error.message);
         await interaction.editReply({ content: `Could not reach the license backend. Is it running? (${error.message})` });
         return;
       }
+      console.log('GiveKey result:', JSON.stringify(result));
       if (!result.key) {
-        await interaction.editReply({ content: `Failed to generate key: ${result.error ?? 'unknown error'}` });
+        await interaction.editReply({
+          content: `Failed to generate key. Backend returned: ${JSON.stringify(result) ?? 'empty response'}`,
+        });
         return;
       }
       await interaction.editReply({
