@@ -49,7 +49,7 @@ async function availableJars() {
   }
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Angemeldet als ${readyClient.user.tag}`);
@@ -108,6 +108,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.editReply({
         content: `Key for <@${target.id}> (${type}):\n\`${result.key}\``,
       });
+      let roleMessage = '';
+      try {
+        const member = await interaction.guild.members.fetch(target.id);
+        await member.roles.add('1535889645173473343');
+        roleMessage = ` Role <@&1535889645173473343> added to <@${target.id}>.`;
+      } catch (error) {
+        console.error('Role assignment failed:', error.message);
+        roleMessage = ` Could not add the role (is the user in this server? Is the bot's role above it and does it have Manage Roles?).`;
+      }
+      await interaction.followUp({ content: roleMessage.trim(), ephemeral: true });
       await target
         .send(`Here is your ${type} key for Vibecode:\n\`${result.key}\`\nEnter it in the addon to activate. Do not share it.`)
         .catch(() => {});
