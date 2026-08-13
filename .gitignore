@@ -1,0 +1,5 @@
+node_modules/
+.env
+jars/*.jar
+backend/node_modules/
+backend/data/

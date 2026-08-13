@@ -1,0 +1,15 @@
+{
+  "name": "jar-download-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord bot that provides JAR downloads through /download.",
+  "type": "module",
+  "scripts": {
+    "register": "node src/register-commands.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.25.1",
+    "dotenv": "^16.6.1"
+  }
+}

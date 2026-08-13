@@ -1,0 +1,120 @@
+import 'dotenv/config';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const { DISCORD_TOKEN, BACKEND_URL, ADMIN_KEY, DISCORD_ADMIN_IDS } = process.env;
+if (!DISCORD_TOKEN) throw new Error('DISCORD_TOKEN is missing. Add it to the .env file.');
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const jarsDir = path.join(rootDir, 'jars');
+const downloadRoleId = '1535889645173473343';
+const ownerRoleId = '1537156229753741423';
+const allowedRoleIds = [downloadRoleId, ownerRoleId];
+const allowedChannelId = '1535889596548907069';
+const adminRoleIds = (DISCORD_ADMIN_IDS ?? ownerRoleId).split(',').map((id) => id.trim());
+
+function isAdmin(interaction) {
+  return interaction.inGuild() && interaction.member.roles.cache.some((role) => adminRoleIds.includes(role.id));
+}
+
+async function callBackend(path, body) {
+  if (!BACKEND_URL) throw new Error('BACKEND_URL is not set. Add it to the .env file.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function availableJars() {
+  try {
+    const entries = await readdir(jarsDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.jar'))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, 'de'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+client.once(Events.ClientReady, (readyClient) => {
+  console.log(`Angemeldet als ${readyClient.user.tag}`);
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (interaction.isChatInputCommand() && interaction.commandName === 'download') {
+      if (!interaction.inGuild() || interaction.channelId !== allowedChannelId) {
+        await interaction.reply({ content: 'Download in download channel', ephemeral: true });
+        return;
+      }
+      if (!interaction.member.roles.cache.some((role) => allowedRoleIds.includes(role.id))) {
+        await interaction.reply({ content: 'You do not have the required role to download files.', ephemeral: true });
+        return;
+      }
+      const files = await availableJars();
+      if (!files.length) {
+        await interaction.reply({ content: 'There are currently no JAR files available.', ephemeral: true });
+        return;
+      }
+      const filePaths = files.map((name) => path.join(jarsDir, name));
+      await interaction.reply({
+        content: files.length > 1
+          ? '**Do not share these JAR files**\n\n' + files.join('\n')
+          : `**Do not share this Jar!**\n\n**${files[0]}**`,
+        files: filePaths,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === 'givekey') {
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        return;
+      }
+      const target = interaction.options.getUser('user');
+      const type = interaction.options.getString('type');
+      await interaction.deferReply({ ephemeral: true });
+      let result;
+      try {
+        result = await callBackend('/api/admin/generate', { adminKey: ADMIN_KEY, type, owner: target.id });
+      } catch (error) {
+        await interaction.editReply({ content: `Could not reach the license backend. Is it running? (${error.message})` });
+        return;
+      }
+      if (!result.key) {
+        await interaction.editReply({ content: `Failed to generate key: ${result.error ?? 'unknown error'}` });
+        return;
+      }
+      await interaction.editReply({
+        content: `Key for <@${target.id}> (${type}):\n\`${result.key}\``,
+      });
+      await target
+        .send(`Here is your ${type} key for Vibecode:\n\`${result.key}\`\nEnter it in the addon to activate. Do not share it.`)
+        .catch(() => {});
+      return;
+    }
+  } catch (error) {
+    console.error('Interaction error:', error);
+    const message = 'Der Download konnte nicht gesendet werden. Ist die Datei vielleicht größer als das Discord-Upload-Limit?';
+    if (interaction.deferred || interaction.replied) await interaction.editReply({ content: message, components: [] }).catch(() => {});
+    else await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
+  }
+});
+
+client.login(DISCORD_TOKEN);
