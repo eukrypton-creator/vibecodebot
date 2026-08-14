@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { generateKey, listKeys, verify } from './db.js';
+import { claimKey, generateKey, listKeys, resetHwid, revokeKey, verify } from './db.js';
 
 const { ADMIN_KEY, PORT = 3000 } = process.env;
 
@@ -16,8 +16,9 @@ app.get('/health', (req, res) => {
 });
 
 app.post('/api/verify', (req, res) => {
-  const { licenseKey, hwid } = req.body ?? {};
-  const result = verify(licenseKey, hwid);
+  const { licenseKey, key, hwid } = req.body ?? {};
+  const result = verify(licenseKey ?? key, hwid);
+  result.authorized = result.ok === true;
   res.json(result);
 });
 
@@ -37,6 +38,21 @@ app.post('/api/admin/generate', requireAdmin, (req, res) => {
 
 app.post('/api/admin/list', requireAdmin, (req, res) => {
   res.json({ keys: listKeys() });
+});
+
+app.post('/api/admin/claim', requireAdmin, (req, res) => {
+  const { key, discordId } = req.body ?? {};
+  res.json(claimKey(key, discordId));
+});
+
+app.post('/api/admin/revoke', requireAdmin, (req, res) => {
+  const { key } = req.body ?? {};
+  res.json(revokeKey(key));
+});
+
+app.post('/api/admin/reset-hwid', requireAdmin, (req, res) => {
+  const { key } = req.body ?? {};
+  res.json(resetHwid(key));
 });
 
 app.listen(PORT, () => {

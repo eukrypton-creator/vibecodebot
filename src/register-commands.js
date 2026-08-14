@@ -13,6 +13,36 @@ const commands = [
     .setDescription('Select a JAR file to download.')
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('verify')
+    .setDescription('Verify a license key so it can be used in the addon.')
+    .addStringOption((option) =>
+      option
+        .setName('key')
+        .setDescription('Your license key (VIBE-XXXX-XXXX-XXXX).')
+        .setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('removekey')
+    .setDescription('Revoke a license key so it can no longer be used. (Admin)')
+    .addStringOption((option) =>
+      option
+        .setName('key')
+        .setDescription('The license key to revoke.')
+        .setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('reset-hwid')
+    .setDescription('Reset the computer binding of a license key so it can be used again. (Admin)')
+    .addStringOption((option) =>
+      option
+        .setName('key')
+        .setDescription('The license key to reset.')
+        .setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('givekey')
     .setDescription('Generate a license key for a user.')
     .addUserOption((option) => option.setName('user').setDescription('The user who gets the key.').setRequired(true))

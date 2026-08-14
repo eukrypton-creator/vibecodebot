@@ -22,7 +22,7 @@ function isAdmin(interaction) {
 async function callBackend(path, body) {
   if (!BACKEND_URL) throw new Error('BACKEND_URL is not set. Add it to the .env file.');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
@@ -30,7 +30,20 @@ async function callBackend(path, body) {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    return response.json();
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Backend returned a non-JSON response (HTTP ${response.status}). Is the backend outdated?`);
+    }
+    if (!response.ok) {
+      throw new Error(`Backend error (HTTP ${response.status}): ${json?.error ?? text.slice(0, 200)}`);
+    }
+    return json;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('Request timed out after 10s.');
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -82,6 +95,113 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
+      const key = interaction.options.getString('key');
+      await interaction.deferReply({ ephemeral: true });
+      let result;
+      try {
+        result = await callBackend('/api/admin/claim', { adminKey: ADMIN_KEY, key, discordId: interaction.user.id });
+      } catch (error) {
+        console.error('Backend call failed:', error.message);
+        await interaction.editReply({ content: `Could not reach the license backend: ${error.message}` });
+        return;
+      }
+      console.log('Verify result:', JSON.stringify(result));
+      if (!result.ok) {
+        let message = 'This key could not be verified.';
+        switch (result.reason) {
+          case 'missing_fields': message = 'Please enter a license key.'; break;
+          case 'key_not_found': message = 'This key does not exist. Check that you copied it correctly.'; break;
+          case 'banned': message = 'This key has been banned.'; break;
+          case 'expired': message = 'This key has expired.'; break;
+          case 'wrong_owner': message = 'This key belongs to another Discord user.'; break;
+          case 'already_verified': message = 'This key is already verified by another user.'; break;
+          default: break;
+        }
+        await interaction.editReply({ content: `Verification failed: ${message}`, ephemeral: true });
+        return;
+      }
+      const info = result.type === 'lifetime'
+        ? 'Lifetime'
+        : result.type === 'monthly'
+          ? `Monthly (expires <t:${Math.floor(result.expiresAt / 1000)}:D>)`
+          : 'active';
+      await interaction.editReply({
+        content: `Key verified!\nType: ${info}\n\nYou can now enter \`${key}\` in the addon to activate it. Do not share this key.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === 'removekey') {
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        return;
+      }
+      const key = interaction.options.getString('key');
+      await interaction.deferReply({ ephemeral: true });
+      let result;
+      try {
+        result = await callBackend('/api/admin/revoke', { adminKey: ADMIN_KEY, key });
+      } catch (error) {
+        console.error('Backend call failed:', error.message);
+        await interaction.editReply({ content: `Could not reach the license backend: ${error.message}` });
+        return;
+      }
+      console.log('RemoveKey result:', JSON.stringify(result));
+      if (!result.ok) {
+        let message = 'This key could not be removed.';
+        switch (result.reason) {
+          case 'missing_fields': message = 'Please enter a license key.'; break;
+          case 'key_not_found': message = 'This key does not exist.'; break;
+          case 'already_banned': message = 'This key is already revoked.'; break;
+          default: break;
+        }
+        await interaction.editReply({ content: `Failed: ${message}`, ephemeral: true });
+        return;
+      }
+      await interaction.editReply({
+        content: `Key revoked: \`${key}\`\nIt can no longer be used in the addon.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === 'reset-hwid') {
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        return;
+      }
+      const key = interaction.options.getString('key');
+      await interaction.deferReply({ ephemeral: true });
+      let result;
+      try {
+        result = await callBackend('/api/admin/reset-hwid', { adminKey: ADMIN_KEY, key });
+      } catch (error) {
+        console.error('Backend call failed:', error.message);
+        await interaction.editReply({ content: `Could not reach the license backend: ${error.message}` });
+        return;
+      }
+      console.log('ResetHwid result:', JSON.stringify(result));
+      if (!result.ok) {
+        let message = 'This key could not be reset.';
+        switch (result.reason) {
+          case 'missing_fields': message = 'Please enter a license key.'; break;
+          case 'key_not_found': message = 'This key does not exist.'; break;
+          case 'banned': message = 'This key is banned.'; break;
+          case 'no_hwid_bound': message = 'This key is not bound to any computer yet.'; break;
+          default: break;
+        }
+        await interaction.editReply({ content: `Failed: ${message}`, ephemeral: true });
+        return;
+      }
+      await interaction.editReply({
+        content: `HWID reset for \`${key}\`\nThe key can now be activated on another computer.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'givekey') {
       if (!isAdmin(interaction)) {
         await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -125,7 +245,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } catch (error) {
     console.error('Interaction error:', error);
-    const message = 'Der Download konnte nicht gesendet werden. Ist die Datei vielleicht größer als das Discord-Upload-Limit?';
+    const message = 'Something went wrong while handling that command. Please try again.';
     if (interaction.deferred || interaction.replied) await interaction.editReply({ content: message, components: [] }).catch(() => {});
     else await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
   }
