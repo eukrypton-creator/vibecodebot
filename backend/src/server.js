@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { claimKey, generateKey, listKeys, resetHwid, revokeKey, verify } from './db.js';
+import { claimKey, findKeysByOwner, generateKey, listKeys, resetHwid, revokeKey, verify } from './db.js';
 
 const { ADMIN_KEY, PORT = 3000 } = process.env;
 
@@ -38,6 +38,11 @@ app.post('/api/admin/generate', requireAdmin, (req, res) => {
 
 app.post('/api/admin/list', requireAdmin, (req, res) => {
   res.json({ keys: listKeys() });
+});
+
+app.post('/api/admin/lookup-user', requireAdmin, (req, res) => {
+  const { discordId } = req.body ?? {};
+  res.json(findKeysByOwner(discordId));
 });
 
 app.post('/api/admin/claim', requireAdmin, (req, res) => {

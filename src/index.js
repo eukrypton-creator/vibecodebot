@@ -7,10 +7,20 @@ import { fileURLToPath } from 'node:url';
 const { DISCORD_TOKEN, BACKEND_URL, ADMIN_KEY, DISCORD_ADMIN_IDS } = process.env;
 if (!DISCORD_TOKEN) throw new Error('DISCORD_TOKEN is missing. Add it to the .env file.');
 
+const tierRoles = {
+  lifetime: (process.env.ROLE_LIFETIME ?? '').split(',').map((id) => id.trim()).filter(Boolean),
+  monthly: (process.env.ROLE_MONTHLY ?? '').split(',').map((id) => id.trim()).filter(Boolean),
+};
+
+function rolesForType(type) {
+  return tierRoles[type] ?? [];
+}
+
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const jarsDir = path.join(rootDir, 'jars');
 const downloadRoleId = '1535889645173473343';
 const ownerRoleId = '1537156229753741423';
+const memberRoleId = '1537228675391422554';
 const allowedRoleIds = [downloadRoleId, ownerRoleId];
 const allowedChannelId = '1535889596548907069';
 const adminRoleIds = (DISCORD_ADMIN_IDS ?? ownerRoleId).split(',').map((id) => id.trim());
@@ -68,6 +78,15 @@ client.once(Events.ClientReady, (readyClient) => {
   console.log(`Angemeldet als ${readyClient.user.tag}`);
 });
 
+client.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    await member.roles.add(memberRoleId);
+    console.log(`Member role added to ${member.user.tag}`);
+  } catch (error) {
+    console.error(`Could not assign member role to ${member.user.tag}:`, error.message);
+  }
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand() && interaction.commandName === 'download') {
@@ -97,10 +116,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
       const key = interaction.options.getString('key');
+      const forUser = interaction.options.getUser('user');
+      if (forUser && !isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to verify keys for other users.', ephemeral: true });
+        return;
+      }
+      const claimDiscordId = forUser ? forUser.id : interaction.user.id;
       await interaction.deferReply({ ephemeral: true });
       let result;
       try {
-        result = await callBackend('/api/admin/claim', { adminKey: ADMIN_KEY, key, discordId: interaction.user.id });
+        result = await callBackend('/api/admin/claim', { adminKey: ADMIN_KEY, key, discordId: claimDiscordId });
       } catch (error) {
         console.error('Backend call failed:', error.message);
         await interaction.editReply({ content: `Could not reach the license backend: ${error.message}` });
@@ -126,10 +151,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
         : result.type === 'monthly'
           ? `Monthly (expires <t:${Math.floor(result.expiresAt / 1000)}:D>)`
           : 'active';
+      const who = forUser ? ` for <@${forUser.id}>` : '';
       await interaction.editReply({
-        content: `Key verified!\nType: ${info}\n\nYou can now enter \`${key}\` in the addon to activate it. Do not share this key.`,
+        content: `Key verified${who}!\nType: ${info}\n\nYou can now enter \`${key}\` in the addon to activate it. Do not share this key.`,
         ephemeral: true,
       });
+
+      const verifyTarget = forUser ?? interaction.user;
+      const tierRoleIds = rolesForType(result.type);
+      if (tierRoleIds.length) {
+        try {
+          const member = await interaction.guild.members.fetch(verifyTarget.id);
+          await member.roles.add(tierRoleIds);
+          await interaction.followUp({ content: `Added ${result.type} role to <@${verifyTarget.id}>.`, ephemeral: true });
+        } catch (error) {
+          console.error('Tier role assignment failed:', error.message);
+          await interaction.followUp({
+            content: `Key verified, but the ${result.type} role could not be added: ${error.message} (is the bot's role above the target role and does it have Manage Roles?).`,
+            ephemeral: true,
+          });
+        }
+      }
       return;
     }
 
@@ -197,6 +239,43 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       await interaction.editReply({
         content: `HWID reset for \`${key}\`\nThe key can now be activated on another computer.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === 'checklicense') {
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        return;
+      }
+      const target = interaction.options.getUser('user');
+      await interaction.deferReply({ ephemeral: true });
+      let result;
+      try {
+        result = await callBackend('/api/admin/lookup-user', { adminKey: ADMIN_KEY, discordId: target.id });
+      } catch (error) {
+        console.error('Backend call failed:', error.message);
+        await interaction.editReply({ content: `Could not reach the license backend: ${error.message}` });
+        return;
+      }
+      console.log('CheckLicense result:', JSON.stringify(result));
+      const keys = result.keys ?? [];
+      if (!keys.length) {
+        await interaction.editReply({ content: `<@${target.id}> has no license keys.`, ephemeral: true });
+        return;
+      }
+      const lines = keys.map((k) => {
+        const status = [];
+        if (k.banned) status.push('**BANNED**');
+        if (k.expiresAt && Date.now() > k.expiresAt) status.push('expired');
+        status.push(k.type ?? 'unknown');
+        status.push(k.verifiedBy ? `verified by <@${k.verifiedBy}>` : 'not verified');
+        status.push(k.hwid ? 'bound to a computer' : 'not bound to a computer');
+        return `\`${k.key}\` - ${status.join(', ')}`;
+      });
+      await interaction.editReply({
+        content: `License keys for <@${target.id}>:\n${lines.join('\n')}`,
         ephemeral: true,
       });
       return;

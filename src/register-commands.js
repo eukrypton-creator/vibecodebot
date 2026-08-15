@@ -21,6 +21,12 @@ const commands = [
         .setDescription('Your license key (VIBE-XXXX-XXXX-XXXX).')
         .setRequired(true)
     )
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setDescription('Verify the key for this user instead of yourself. (Admin)')
+        .setRequired(false)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('removekey')
@@ -55,6 +61,16 @@ const commands = [
           { name: 'Lifetime', value: 'lifetime' },
           { name: 'Monthly', value: 'monthly' },
         )
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('checklicense')
+    .setDescription("Show the license key(s) a user has. (Admin)")
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setDescription('The user to look up.')
+        .setRequired(true)
     )
     .toJSON(),
 ];

@@ -118,3 +118,20 @@ export function listKeys(adminKey) {
     expiresAt,
   }));
 }
+
+export function findKeysByOwner(discordId) {
+  if (!discordId) return { error: 'missing_fields' };
+  const keys = licenses
+    .filter((l) => l.owner === discordId || l.verifiedBy === discordId)
+    .map(({ banned, createdAt, expiresAt, hwid, key, owner, verifiedBy, type }) => ({
+      key,
+      type,
+      owner,
+      verifiedBy,
+      hwid,
+      banned,
+      createdAt,
+      expiresAt,
+    }));
+  return { keys };
+}
