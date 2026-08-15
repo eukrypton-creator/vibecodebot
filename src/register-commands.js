@@ -73,6 +73,10 @@ const commands = [
         .setRequired(true)
     )
     .toJSON(),
+  new SlashCommandBuilder()
+    .setName('pricing')
+    .setDescription('Post the pricing info into the sales channel. (Admin)')
+    .toJSON(),
 ];
 
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);

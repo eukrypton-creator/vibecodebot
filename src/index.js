@@ -23,6 +23,22 @@ const ownerRoleId = '1537156229753741423';
 const memberRoleId = '1537228675391422554';
 const allowedRoleIds = [downloadRoleId, ownerRoleId];
 const allowedChannelId = '1535889596548907069';
+const pricingChannelId = '1538206007153397821';
+
+const PRICING_MESSAGE = `**VibeCode Client+ / Vibecode+ VibeCode Addon**
+
+Client Info:
+Version -> Fabric 1.21.11
+
+Pricing:
+VibeCode+ [Monthly] -> 225M donutsmp money -> Steam Card / Paysafe / LTC
+VibeCode+ [Lifetime] -> 450M donutsmp money -> Steam Card / Paysafe / LTC
+
+Supported Launchers:
+Minecraft Launcher
+Modrinth App
+Prism Launcher
+And more...`;
 const adminRoleIds = (DISCORD_ADMIN_IDS ?? ownerRoleId).split(',').map((id) => id.trim());
 
 function isAdmin(interaction) {
@@ -164,7 +180,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const member = await interaction.guild.members.fetch(verifyTarget.id);
           await member.roles.add(tierRoleIds);
           await interaction.followUp({ content: `Added ${result.type} role to <@${verifyTarget.id}>.`, ephemeral: true });
-        } catch (error) {
+    if (interaction.isChatInputCommand() && interaction.commandName === 'pricing') {
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        return;
+      }
+      const channel = await client.channels.fetch(pricingChannelId);
+      if (!channel?.isTextBased()) {
+        await interaction.reply({ content: 'Pricing channel not found.', ephemeral: true });
+        return;
+      }
+      await channel.send(PRICING_MESSAGE);
+      await interaction.reply({ content: 'Pricing message posted.', ephemeral: true });
+      return;
+    }
+  } catch (error) {
           console.error('Tier role assignment failed:', error.message);
           await interaction.followUp({
             content: `Key verified, but the ${result.type} role could not be added: ${error.message} (is the bot's role above the target role and does it have Manage Roles?).`,
