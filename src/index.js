@@ -115,12 +115,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
-      const key = interaction.options.getString('key');
-      const forUser = interaction.options.getUser('user');
-      if (forUser && !isAdmin(interaction)) {
-        await interaction.reply({ content: 'You do not have permission to verify keys for other users.', ephemeral: true });
+      if (!isAdmin(interaction)) {
+        await interaction.reply({ content: 'You do not have permission to verify license keys.', ephemeral: true });
         return;
       }
+      const key = interaction.options.getString('key');
+      const forUser = interaction.options.getUser('user');
       const claimDiscordId = forUser ? forUser.id : interaction.user.id;
       await interaction.deferReply({ ephemeral: true });
       let result;

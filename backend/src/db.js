@@ -50,13 +50,9 @@ export function claimKey(key, discordId) {
   if (!entry) return { ok: false, reason: 'key_not_found' };
   if (entry.banned) return { ok: false, reason: 'banned' };
   if (entry.expiresAt && Date.now() > entry.expiresAt) return { ok: false, reason: 'expired' };
-  if (entry.owner && entry.owner !== discordId) return { ok: false, reason: 'wrong_owner' };
-  if (entry.verifiedBy && entry.verifiedBy !== discordId) return { ok: false, reason: 'already_verified' };
 
-  if (!entry.verifiedBy) {
-    entry.verifiedBy = discordId;
-    save();
-  }
+  entry.verifiedBy = discordId;
+  save();
   return { ok: true, type: entry.type, expiresAt: entry.expiresAt };
 }
 
