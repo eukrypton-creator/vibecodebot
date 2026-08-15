@@ -180,6 +180,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const member = await interaction.guild.members.fetch(verifyTarget.id);
           await member.roles.add(tierRoleIds);
           await interaction.followUp({ content: `Added ${result.type} role to <@${verifyTarget.id}>.`, ephemeral: true });
+  } catch (error) {
+          console.error('Tier role assignment failed:', error.message);
+          await interaction.followUp({
+            content: `Key verified, but the ${result.type} role could not be added: ${error.message} (is the bot's role above the target role and does it have Manage Roles?).`,
+            ephemeral: true,
+          });
+        }
+      }
+      return;
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'pricing') {
       if (!isAdmin(interaction)) {
         await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -192,16 +203,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       await channel.send(PRICING_MESSAGE);
       await interaction.reply({ content: 'Pricing message posted.', ephemeral: true });
-      return;
-    }
-  } catch (error) {
-          console.error('Tier role assignment failed:', error.message);
-          await interaction.followUp({
-            content: `Key verified, but the ${result.type} role could not be added: ${error.message} (is the bot's role above the target role and does it have Manage Roles?).`,
-            ephemeral: true,
-          });
-        }
-      }
       return;
     }
 
